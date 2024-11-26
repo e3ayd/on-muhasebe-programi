@@ -1,5 +1,42 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
+
+// Çalışan Ekleme
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_adi'])) {
+    $ad = $_POST['calisan_adi'];
+    $pozisyon = $_POST['pozisyon'];
+    $maas = $_POST['maas'];
+    $avans = $_POST['avans'] ?? 0;
+    $ekstra_odeme1 = $_POST['ekstra_odeme1'] ?? 0;
+    $ekstra_odeme2 = $_POST['ekstra_odeme2'] ?? 0;
+
+    $stmt = $conn->prepare("INSERT INTO calisanlar (ad, pozisyon, maas, avans, ekstra_odeme1, ekstra_odeme2) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssdddd", $ad, $pozisyon, $maas, $avans, $ekstra_odeme1, $ekstra_odeme2);
+    $stmt->execute();
+    $stmt->close();
+
+    header("Location: calisanlar.php");
+    exit();
+}
+
+// Çalışanı silme işlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
+    $sil_id = $_POST['sil_id'];
+
+    // Çalışanı sil
+    $stmt = $conn->prepare("DELETE FROM calisanlar WHERE id = ?");
+    $stmt->bind_param("i", $sil_id);
+    $stmt->execute();
+    $stmt->close();
+
+    // Kalan çalışanları yeniden sıralamak için
+    $conn->query("SET @new_id = 0;"); // Yeni ID değerini sıfırla
+    $conn->query("UPDATE calisanlar SET id = (@new_id := @new_id + 1);"); // ID'leri sırayla güncelle
+    $conn->query("ALTER TABLE calisanlar AUTO_INCREMENT = 1;"); // AUTO_INCREMENT değerini sıfırla
+
+    header("Location: calisanlar.php");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -78,7 +115,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                         </thead>
                         <tbody>
                             <?php
-                            $query = "SELECT * FROM calisanlar ORDER BY created_at DESC";
+                            $query = "SELECT * FROM calisanlar ORDER BY id ASC";
                             $result = $conn->query($query);
 
                             if ($result->num_rows > 0) {
@@ -91,14 +128,15 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                                         <td>{$row['avans']} ₺</td>
                                         <td>{$row['ekstra_odeme1']} ₺</td>
                                         <td>{$row['ekstra_odeme2']} ₺</td>
-                                        <td>
+                                         <td>
+                                            <a href='calisan_duzenle.php?id={$row['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' style='display:inline;'>
                                                 <input type='hidden' name='sil_id' value='{$row['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger'  onclick='return confirm(\"Bu çalışanı silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";
-                                }
+                                            }
                             } else {
                                 echo "<tr><td colspan='8' class='text-center'>Kayıt bulunamadı.</td></tr>";
                             }
@@ -109,39 +147,6 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
             </div>
         </div>
     </div>
-
-    <?php
-    // Çalışan Ekleme
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_adi'])) {
-        $ad = $_POST['calisan_adi'];
-        $pozisyon = $_POST['pozisyon'];
-        $maas = $_POST['maas'];
-        $avans = $_POST['avans'] ?? 0;
-        $ekstra_odeme1 = $_POST['ekstra_odeme1'] ?? 0;
-        $ekstra_odeme2 = $_POST['ekstra_odeme2'] ?? 0;
-
-        $stmt = $conn->prepare("INSERT INTO calisanlar (ad, pozisyon, maas, avans, ekstra_odeme1, ekstra_odeme2) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssdddd", $ad, $pozisyon, $maas, $avans, $ekstra_odeme1, $ekstra_odeme2);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: calisanlar.php");
-        exit();
-    }
-
-    // Çalışan Silme
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-        $sil_id = $_POST['sil_id'];
-
-        $stmt = $conn->prepare("DELETE FROM calisanlar WHERE id = ?");
-        $stmt->bind_param("i", $sil_id);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: calisanlar.php");
-        exit();
-    }
-    ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

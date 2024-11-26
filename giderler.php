@@ -1,5 +1,40 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
+
+
+// Gider Ekleme İşlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aciklama'], $_POST['miktar'], $_POST['tarih'])) {
+    $aciklama = $_POST['aciklama'];
+    $miktar = $_POST['miktar'];
+    $tarih = $_POST['tarih'];
+
+    $stmt = $conn->prepare("INSERT INTO giderler (aciklama, miktar, tarih) VALUES (?, ?, ?)");
+    $stmt->bind_param("sds", $aciklama, $miktar, $tarih);
+    $stmt->execute();
+    $stmt->close();
+
+    header("Location: giderler.php");
+    exit();
+}
+
+// Gider Silme İşlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
+    $sil_id = $_POST['sil_id'];
+
+    // Gider sil
+    $stmt = $conn->prepare("DELETE FROM giderler WHERE id = ?");
+    $stmt->bind_param("i", $sil_id);
+    $stmt->execute();
+    $stmt->close();
+
+    // ID sıfırlama ve güncelleme
+    $conn->query("SET @new_id = 0;");
+    $conn->query("UPDATE giderler SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
+    $conn->query("ALTER TABLE giderler AUTO_INCREMENT = 1;");
+
+    header("Location: giderler.php");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -117,9 +152,10 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                                         <td>{$row['miktar']} ₺</td>
                                         <td>{$row['tarih']}</td>
                                         <td>
+                                            <a href='gider_duzenle.php?id={$row['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' style='display:inline;'>
                                                 <input type='hidden' name='sil_id' value='{$row['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu gideri silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";
@@ -155,35 +191,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
         </div>
     </div>
 
-    <?php
-    // Gider Ekleme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aciklama'], $_POST['miktar'], $_POST['tarih'])) {
-        $aciklama = $_POST['aciklama'];
-        $miktar = $_POST['miktar'];
-        $tarih = $_POST['tarih'];
-
-        $stmt = $conn->prepare("INSERT INTO giderler (aciklama, miktar, tarih) VALUES (?, ?, ?)");
-        $stmt->bind_param("sds", $aciklama, $miktar, $tarih);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: giderler.php");
-        exit();
-    }
-
-    // Gider Silme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-        $sil_id = $_POST['sil_id'];
-
-        $stmt = $conn->prepare("DELETE FROM giderler WHERE id = ?");
-        $stmt->bind_param("i", $sil_id);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: giderler.php");
-        exit();
-    }
-    ?>
+   
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

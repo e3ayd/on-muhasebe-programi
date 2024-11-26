@@ -1,5 +1,25 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
+
+
+// Fatura silme işlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
+    $sil_id = $_POST['sil_id'];
+
+    // Faturayı sil
+    $stmt = $conn->prepare("DELETE FROM faturalar WHERE id = ?");
+    $stmt->bind_param("i", $sil_id);
+    $stmt->execute();
+    $stmt->close();
+
+    // Kalan faturaları yeniden sıralamak için
+    $conn->query("SET @new_id = 0;"); // Yeni ID değerini sıfırla
+    $conn->query("UPDATE faturalar SET id = (@new_id := @new_id + 1);"); // ID'leri sırayla güncelle
+    $conn->query("ALTER TABLE faturalar AUTO_INCREMENT = 1;"); // AUTO_INCREMENT değerini sıfırla
+
+    header("Location: alislar_fatura.php");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -65,16 +85,20 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
 
                             if ($result->num_rows > 0) {
                                 while ($row = $result->fetch_assoc()) {
-                                    $kalanBorc = $row['tutar'] - $row['odenen'];
+                                    $kalanBorc = $row['miktar'] - $row['odenen'];
                                     echo "<tr>
                                         <td>{$row['id']}</td>
                                         <td>{$row['musteri_adi']}</td>
                                         <td>{$row['fatura_no']}</td>
-                                        <td>{$row['tutar']} ₺</td>
+                                        <td>{$row['miktar']} ₺</td>
                                         <td>{$row['odenen']} ₺</td>
                                         <td class='" . ($kalanBorc > 0 ? "borc" : "") . "'>" . ($kalanBorc > 0 ? $kalanBorc . " ₺" : "Yok") . "</td>
-                                        <td>
-                                            <button class='btn btn-sm btn-warning' onclick='acDuzeltModal({$row['id']})'>Düzenle</button>
+                                       <td>
+                                            <a href='alislar_fatura_duzenle.php?id={$row['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
+                                            <form method='POST' style='display:inline;'>
+                                                <input type='hidden' name='sil_id' value='{$row['id']}'>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu faturayı silmek istediğinize emin misiniz?\");'>Sil</button>
+                                            </form>
                                         </td>
                                     </tr>";
                                 }
@@ -89,45 +113,6 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
         </div>
     </div>
 
-    <!-- Düzenleme Modal -->
-    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title" id="editModalLabel">Fatura Ödemesini Düzenle</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editForm" method="POST">
-                        <input type="hidden" name="fatura_id" id="editFaturaId">
-                        <div class="mb-3">
-                            <label for="editFaturaNo" class="form-label">Fatura No</label>
-                            <input type="text" class="form-control" id="editFaturaNo" readonly>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editOdenenTutar" class="form-label">Ödenen Tutar</label>
-                            <input type="number" class="form-control" name="odenen" id="editOdenenTutar" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Kaydet</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function acDuzeltModal(faturaId) {
-            fetch(`get_fatura.php?id=${faturaId}`)
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('editFaturaId').value = data.id;
-                    document.getElementById('editFaturaNo').value = data.fatura_no;
-                    document.getElementById('editOdenenTutar').value = data.odenen;
-                    const modal = new bootstrap.Modal(document.getElementById('editModal'));
-                    modal.show();
-                });
-        }
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

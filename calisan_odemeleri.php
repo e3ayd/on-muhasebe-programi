@@ -1,5 +1,47 @@
+
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
+
+    // Aylık toplam ödeme hesaplama
+    $currentMonth = date("Y-m");
+    $aylikToplamSorgu = "SELECT SUM(miktar) AS toplam FROM calisan_odeme WHERE DATE_FORMAT(tarih, '%Y-%m') = '$currentMonth'";
+    $aylikToplamSonuc = $conn->query($aylikToplamSorgu);
+    $aylikToplam = $aylikToplamSonuc->fetch_assoc()['toplam'] ?? 0;
+
+
+// Ödeme Ekleme İşlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_id'], $_POST['tarih'], $_POST['miktar'])) {
+    $calisan_id = $_POST['calisan_id'];
+    $tarih = $_POST['tarih'];
+    $miktar = $_POST['miktar'];
+
+    $stmt = $conn->prepare("INSERT INTO calisan_odeme (calisan_id, miktar, tarih) VALUES (?, ?, ?)");
+    $stmt->bind_param("ids", $calisan_id, $miktar, $tarih);
+    $stmt->execute();
+    $stmt->close();
+
+    header("Location: calisan_odemeleri.php");
+    exit();
+}
+
+// Ödeme Silme İşlemi ve ID'leri Güncelleme
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
+    $sil_id = $_POST['sil_id'];
+
+    // Ödeme sil
+    $stmt = $conn->prepare("DELETE FROM calisan_odeme WHERE id = ?");
+    $stmt->bind_param("i", $sil_id);
+    $stmt->execute();
+    $stmt->close();
+
+    // ID sıfırlama ve güncelleme
+    $conn->query("SET @new_id = 0;");
+    $conn->query("UPDATE calisan_odeme SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
+    $conn->query("ALTER TABLE calisan_odeme AUTO_INCREMENT = 1;");
+
+    header("Location: calisan_odemeleri.php");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -23,7 +65,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
 
             <!-- Aylık Toplam -->
             <div class="alert alert-info">
-                <strong>Bu ay toplam ödeme:</strong> <span id="aylikToplam">0</span> ₺
+                <strong>Bu ay toplam ödeme:</strong> <span id="aylikToplam"><?php echo number_format($aylikToplam, 2, ',', '.'); ?></span> ₺
             </div>
 
             <!-- Ay Seçimi -->
@@ -81,7 +123,6 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                     <table class="table table-striped table-hover" id="odemeListesi">
                         <thead>
                             <tr>
-                                <th>#</th>
                                 <th>Çalışan Adı</th>
                                 <th>Tarih</th>
                                 <th>Ödeme Miktarı</th>
@@ -100,14 +141,14 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                             if ($odemeResult->num_rows > 0) {
                                 while ($odeme = $odemeResult->fetch_assoc()) {
                                     echo "<tr>
-                                        <td>{$odeme['id']}</td>
                                         <td>{$odeme['calisan_adi']}</td>
                                         <td>{$odeme['tarih']}</td>
                                         <td>{$odeme['miktar']} ₺</td>
                                         <td>
+                                            <a href='calisan_odeme_duzenle.php?id={$odeme['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' style='display:inline;'>
                                                 <input type='hidden' name='sil_id' value='{$odeme['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu çalışanı silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";
@@ -123,35 +164,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
         </div>
     </div>
 
-    <?php
-    // Ödeme Ekleme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_id'], $_POST['tarih'], $_POST['miktar'])) {
-        $calisan_id = $_POST['calisan_id'];
-        $tarih = $_POST['tarih'];
-        $miktar = $_POST['miktar'];
-
-        $stmt = $conn->prepare("INSERT INTO calisan_odeme (calisan_id, miktar, tarih) VALUES (?, ?, ?)");
-        $stmt->bind_param("ids", $calisan_id, $miktar, $tarih);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: calisan_odemeleri.php");
-        exit();
-    }
-
-    // Ödeme Silme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-        $sil_id = $_POST['sil_id'];
-
-        $stmt = $conn->prepare("DELETE FROM calisan_odeme WHERE id = ?");
-        $stmt->bind_param("i", $sil_id);
-        $stmt->execute();
-        $stmt->close();
-
-        header("Location: calisan_odemeleri.php");
-        exit();
-    }
-    ?>
+  
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

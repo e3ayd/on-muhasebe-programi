@@ -68,9 +68,10 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                                         <td>{$row['email']}</td>
                                         <td>{$row['izin']}</td>
                                         <td>
+                                            <a href='ayarlar_duzenle.php?id={$row['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' class='d-inline'>
                                                 <input type='hidden' name='delete_id' value='{$row['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu kullanıcıyı silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";

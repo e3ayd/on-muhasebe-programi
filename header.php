@@ -82,12 +82,14 @@ if (!isset($_SESSION['user_id'])) {
         <div class="logo">Ön Muhasebe</div>
         <a href="/accounting/index.php" class="active">Dashboard</a>
         <a href="/accounting/satis.php">Satış</a>
+        <a href="/accounting/musteri.php">Müşteriler</a>
         <a href="/accounting/faturalar.php">Faturalarım</a>
         <a href="/accounting/calisanlar.php">Çalışanlar</a>
         <a href="/accounting/calisan_odemeleri.php">Çalışan Ödemeleri</a>
         <a href="/accounting/alislar_fatura.php">Alışlar Fatura</a>
         <a href="/accounting/gelirler.php">Gelirlerim</a>
         <a href="/accounting/giderler.php">Giderlerim</a>
+        <a href="/accounting/notlarim.php">Notlarım</a>
         <a href="/accounting/ayarlar.php">Ayarlar</a>
         <a href="#" data-toggle="submenu">Hesaplama Araçları</a>
         <div class="submenu">
