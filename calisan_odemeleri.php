@@ -1,13 +1,23 @@
-
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
 
-    // Aylık toplam ödeme hesaplama
-    $currentMonth = date("Y-m");
-    $aylikToplamSorgu = "SELECT SUM(miktar) AS toplam FROM calisan_odeme WHERE DATE_FORMAT(tarih, '%Y-%m') = '$currentMonth'";
-    $aylikToplamSonuc = $conn->query($aylikToplamSorgu);
-    $aylikToplam = $aylikToplamSonuc->fetch_assoc()['toplam'] ?? 0;
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']);
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
 
+// Aylık toplam ödeme hesaplama
+$currentMonth = date("Y-m");
+$aylikToplamSorgu = "SELECT SUM(miktar) AS toplam FROM calisan_odeme WHERE DATE_FORMAT(tarih, '%Y-%m') = '$currentMonth'";
+$aylikToplamSonuc = $conn->query($aylikToplamSorgu);
+$aylikToplam = $aylikToplamSonuc->fetch_assoc()['toplam'] ?? 0;
 
 // Ödeme Ekleme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_id'], $_POST['tarih'], $_POST['miktar'])) {
@@ -16,34 +26,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_id'], $_POST[
     $miktar = $_POST['miktar'];
 
     $stmt = $conn->prepare("INSERT INTO calisan_odeme (calisan_id, miktar, tarih) VALUES (?, ?, ?)");
-    $stmt->bind_param("ids", $calisan_id, $miktar, $tarih);
-    $stmt->execute();
-    $stmt->close();
-
+    if ($stmt) {
+        $stmt->bind_param("ids", $calisan_id, $miktar, $tarih);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Ödeme başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Ödeme eklenirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Ödeme ekleme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: calisan_odemeleri.php");
     exit();
 }
 
 // Ödeme Silme İşlemi ve ID'leri Güncelleme
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-    $sil_id = $_POST['sil_id'];
+    $sil_id = intval($_POST['sil_id']); // Güvenlik için intval kullanımı
 
-    // Ödeme sil
     $stmt = $conn->prepare("DELETE FROM calisan_odeme WHERE id = ?");
-    $stmt->bind_param("i", $sil_id);
-    $stmt->execute();
-    $stmt->close();
+    if ($stmt) {
+        $stmt->bind_param("i", $sil_id);
+        if ($stmt->execute()) {
+            $conn->query("SET @new_id = 0;");
+            $conn->query("UPDATE calisan_odeme SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
+            $conn->query("ALTER TABLE calisan_odeme AUTO_INCREMENT = 1;");
 
-    // ID sıfırlama ve güncelleme
-    $conn->query("SET @new_id = 0;");
-    $conn->query("UPDATE calisan_odeme SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
-    $conn->query("ALTER TABLE calisan_odeme AUTO_INCREMENT = 1;");
-
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Ödeme başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Ödeme silinirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Ödeme silme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: calisan_odemeleri.php");
     exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -55,6 +94,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
         .content {
             margin-left: 250px;
             padding: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #fefefe;
+            border-left: 5px solid;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: Arial, sans-serif;
+            color: #333;
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.4s ease;
+        }
+        .notification.success {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notification.danger {
+            border-color: #f44336;
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .notification .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        .notification .close-btn:hover {
+            color: #000;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -71,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
             <!-- Ay Seçimi -->
             <div class="mb-4">
                 <label for="aySecimi" class="form-label">Ay Seçimi:</label>
-                <select id="aySecimi" class="form-select" onchange="filtreleAy()">
+                <select id="aySecimi" class="form-select">
                     <?php
                     for ($i = 0; $i < 12; $i++) {
                         $date = date("Y-m", strtotime("-$i months"));
@@ -131,7 +219,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                         </thead>
                         <tbody>
                             <?php
-                            $currentMonth = date("Y-m");
                             $odemeQuery = "SELECT o.id, c.ad AS calisan_adi, o.tarih, o.miktar 
                                            FROM calisan_odeme o 
                                            INNER JOIN calisanlar c ON o.calisan_id = c.id 
@@ -148,13 +235,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                                             <a href='calisan_odeme_duzenle.php?id={$odeme['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' style='display:inline;'>
                                                 <input type='hidden' name='sil_id' value='{$odeme['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu çalışanı silmek istediğinize emin misiniz?\");'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu ödemeyi silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";
                                 }
                             } else {
-                                echo "<tr><td colspan='5' class='text-center'>Kayıt bulunamadı.</td></tr>";
+                                echo "<tr><td colspan='4' class='text-center'>Kayıt bulunamadı.</td></tr>";
                             }
                             ?>
                         </tbody>
@@ -163,8 +250,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
             </div>
         </div>
     </div>
-
-  
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

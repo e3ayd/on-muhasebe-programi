@@ -1,6 +1,17 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
 
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']); // success, danger
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
 
 // Gelir Ekleme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aciklama'], $_POST['miktar'], $_POST['tarih'])) {
@@ -9,36 +20,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aciklama'], $_POST['m
     $tarih = $_POST['tarih'];
 
     $stmt = $conn->prepare("INSERT INTO gelirler (aciklama, miktar, tarih) VALUES (?, ?, ?)");
-    $stmt->bind_param("sds", $aciklama, $miktar, $tarih);
-    $stmt->execute();
-    $stmt->close();
-
+    if ($stmt) {
+        $stmt->bind_param("sds", $aciklama, $miktar, $tarih);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Gelir başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Gelir eklenirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Gelir ekleme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: gelirler.php");
     exit();
 }
 
 // Gelir Silme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-    $sil_id = $_POST['sil_id'];
+    $sil_id = intval($_POST['sil_id']); // Güvenlik için intval kullanımı
 
-    // Gelir sil
     $stmt = $conn->prepare("DELETE FROM gelirler WHERE id = ?");
-    $stmt->bind_param("i", $sil_id);
-    $stmt->execute();
-    $stmt->close();
+    if ($stmt) {
+        $stmt->bind_param("i", $sil_id);
+        if ($stmt->execute()) {
+            // ID sıralama işlemi
+            $conn->query("SET @new_id = 0;");
+            $conn->query("UPDATE gelirler SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
+            $conn->query("ALTER TABLE gelirler AUTO_INCREMENT = 1;");
 
-    // ID sıfırlama ve güncelleme
-    $conn->query("SET @new_id = 0;");
-    $conn->query("UPDATE gelirler SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
-    $conn->query("ALTER TABLE gelirler AUTO_INCREMENT = 1;");
-
+            $_SESSION['notification'] = [
+                'type' => 'danger', // 
+                'message' => 'Gelir başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Gelir silinirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Gelir silme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: gelirler.php");
     exit();
 }
-
-
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gelirlerim</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .content {
             margin-left: 250px;
@@ -60,6 +98,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
         }
         .filters input, .filters select {
             width: 300px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #fefefe;
+            border-left: 5px solid;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: Arial, sans-serif;
+            color: #333;
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.4s ease;
+        }
+        .notification.success {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notification.danger {
+            border-color: #f44336;
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .notification .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        .notification .close-btn:hover {
+            color: #000;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -140,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                         </thead>
                         <tbody>
                             <?php
-                            $query = "SELECT * FROM gelirler WHERE DATE_FORMAT(tarih, '%Y-%m') = ? ORDER BY tarih DESC";
+                            $query = "SELECT * FROM gelirler WHERE DATE_FORMAT(tarih, '%Y-%m') = ? ORDER BY id ASC"; // ID'ye göre sıralama
                             $stmt = $conn->prepare($query);
                             $stmt->bind_param("s", $currentMonth);
                             $stmt->execute();
@@ -169,10 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                         </tbody>
                     </table>
                 </div>
-            </div>
-
-            <!-- Gelir Grafikleri -->
-            <div class="row">
+                <div class="row">
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header bg-dark text-white">Aylık Gelir Grafiği</div>
@@ -190,9 +274,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                     </div>
                 </div>
             </div>
+            </div>
         </div>
     </div>
-
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

@@ -1,6 +1,18 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
 
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']); // success, error, info, warning
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
+
 // Satış Ekleme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['baslik'], $_POST['urun_adi'], $_POST['birim_fiyati'], $_POST['miktar'], $_POST['musteri_id'], $_POST['fatura_no'])) {
     $baslik = $_POST['baslik'];
@@ -11,40 +23,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['baslik'], $_POST['uru
     $fatura_no = $_POST['fatura_no'];
 
     $stmt = $conn->prepare("INSERT INTO satis (baslik, urun_adi, birim_fiyati, miktar, musteri_id, fatura_no) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssdiss", $baslik, $urun_adi, $birim_fiyati, $miktar, $musteri_id, $fatura_no);
-    $stmt->execute();
-    $stmt->close();
-
+    if ($stmt) {
+        $stmt->bind_param("ssdiss", $baslik, $urun_adi, $birim_fiyati, $miktar, $musteri_id, $fatura_no);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Satış başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Satış eklenirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'error',
+            'message' => 'Satış ekleme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: satis.php");
     exit();
 }
 
+// Satış Silme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
     $sil_id = $_POST['sil_id'];
 
-    // Satışı sil
     $stmt = $conn->prepare("DELETE FROM satis WHERE id = ?");
-    $stmt->bind_param("i", $sil_id);
-    $stmt->execute();
-    $stmt->close();
+    if ($stmt) {
+        $stmt->bind_param("i", $sil_id);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Satış başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'error',
+                'message' => 'Satış silinirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'error',
+            'message' => 'Satış silme işlemi başlatılamadı!'
+        ];
+    }
 
     // ID sıfırlama ve güncelleme
-    $conn->query("SET @new_id = 0;"); // Geçici değişkeni sıfırla
-    $conn->query("UPDATE satis SET id = (@new_id := @new_id + 1) ORDER BY id ASC;"); // ID'leri yeniden sırala
-
-    // Mevcut maksimum ID'yi bul ve AUTO_INCREMENT değerini ayarla
+    $conn->query("SET @new_id = 0;");
+    $conn->query("UPDATE satis SET id = (@new_id := @new_id + 1) ORDER BY id ASC;");
     $result = $conn->query("SELECT MAX(id) AS max_id FROM satis;");
     $row = $result->fetch_assoc();
-    $max_id = isset($row['max_id']) ? $row['max_id'] + 1 : 1; // Eğer tablo boşsa 1'e ayarla
-    $conn->query("ALTER TABLE satis AUTO_INCREMENT = $max_id;"); // AUTO_INCREMENT değerini güncelle
+    $max_id = isset($row['max_id']) ? $row['max_id'] + 1 : 1;
+    $conn->query("ALTER TABLE satis AUTO_INCREMENT = $max_id;");
 
     header("Location: satis.php");
     exit();
 }
-
-
-
 ?>
+
+
 
 <!DOCTYPE html>
 <html lang="tr">
@@ -58,6 +100,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
             margin-left: 250px;
             padding: 20px;
         }
+        .notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #fefefe;
+    border-left: 5px solid;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    font-family: Arial, sans-serif;
+    color: #333;
+    z-index: 1000;
+    min-width: 300px;
+    animation: slideIn 0.4s ease;
+}
+
+/* Başarı bildirimi */
+.notification.success {
+    border-color: #4caf50;
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+/* Hata bildirimi */
+.notification.error {
+    border-color: #f44336;
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+/* Kapatma butonu */
+.notification .close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #888;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.notification .close-btn:hover {
+    color: #000;
+}
+
+/* Animasyon */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
     </style>
 </head>
 <body>

@@ -1,6 +1,18 @@
 <?php
 require_once 'header.php'; // Header ve veritabanı bağlantısı
 
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']);
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
+
 // Yeni Müşteri Ekleme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['telefon'], $_POST['email'], $_POST['firma_adi'])) {
     $ad_soyad = $_POST['ad_soyad'];
@@ -11,17 +23,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
     $stmt = $conn->prepare("INSERT INTO musteriler (ad_soyad, telefon, email, firma_adi) VALUES (?, ?, ?, ?)");
     if ($stmt) {
         $stmt->bind_param("ssss", $ad_soyad, $telefon, $email, $firma_adi);
-        $stmt->execute();
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Müşteri başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Müşteri eklenirken bir hata oluştu!'
+            ];
+        }
         $stmt->close();
-
-        header("Location: musteri.php"); // Yönlendirme yaparken HTML çıktısı olmamalı
-        exit();
     } else {
-        die("Müşteri ekleme hatası: " . $conn->error);
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Müşteri ekleme işlemi başlatılamadı!'
+        ];
     }
+    header("Location: musteri.php");
+    exit();
+}
+
+// Müşteri Silme İşlemi
+if (isset($_GET['sil_id'])) {
+    $sil_id = intval($_GET['sil_id']); // Güvenlik için ID'yi sayıya dönüştür
+
+    $stmt = $conn->prepare("DELETE FROM musteriler WHERE id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $sil_id);
+        if ($stmt->execute()) {
+            // ID sıralama işlemi
+            $conn->query("SET @new_id = 0;");
+            $conn->query("UPDATE musteriler SET id = (@new_id := @new_id + 1);");
+            $conn->query("ALTER TABLE musteriler AUTO_INCREMENT = 1;");
+
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Müşteri başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Müşteri silinirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Müşteri silme işlemi başlatılamadı!'
+        ];
+    }
+    header("Location: musteri.php");
+    exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -33,6 +90,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
         .content {
             margin-left: 250px;
             padding: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #fefefe;
+            border-left: 5px solid;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: Arial, sans-serif;
+            color: #333;
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.4s ease;
+        }
+        .notification.success {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notification.danger {
+            border-color: #f44336;
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .notification .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        .notification .close-btn:hover {
+            color: #000;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -69,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
                 </div>
             </div>
 
-                        <!-- Müşteri Listesi -->
+            <!-- Müşteri Listesi -->
             <div class="card mb-4">
                 <div class="card-header bg-dark text-white">
                     Müşteri Listesi
@@ -88,12 +194,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
                         </thead>
                         <tbody>
                             <?php
-                            // Müşterileri veritabanından çekme
                             $stmt = $conn->prepare("SELECT id, ad_soyad, telefon, firma_adi, email FROM musteriler");
                             if ($stmt) {
                                 $stmt->execute();
                                 $stmt->bind_result($id, $ad_soyad, $telefon, $firma_adi, $email);
-
                                 while ($stmt->fetch()) {
                                     echo "<tr>
                                             <td>{$id}</td>
@@ -103,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
                                             <td>{$email}</td>
                                             <td>
                                                 <a href='musteri_duzenle.php?id={$id}' class='btn btn-sm btn-primary'>Düzenle</a>
-                                                <a href='musteri_sil.php?id={$id}' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu müşteriyi silmek istediğinize emin misiniz?\");'>Sil</a>
+                                                <a href='musteri.php?sil_id={$id}' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu müşteriyi silmek istediğinize emin misiniz?\");'>Sil</a>
                                             </td>
                                         </tr>";
                                 }
@@ -121,4 +225,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ad_soyad'], $_POST['t
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html>  
+</html>

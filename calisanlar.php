@@ -1,7 +1,19 @@
 <?php
 require_once 'header.php'; // Header ve kullanıcı doğrulama
 
-// Çalışan Ekleme
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']); // success, danger
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
+
+// Çalışan Ekleme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_adi'])) {
     $ad = $_POST['calisan_adi'];
     $pozisyon = $_POST['pozisyon'];
@@ -11,34 +23,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calisan_adi'])) {
     $ekstra_odeme2 = $_POST['ekstra_odeme2'] ?? 0;
 
     $stmt = $conn->prepare("INSERT INTO calisanlar (ad, pozisyon, maas, avans, ekstra_odeme1, ekstra_odeme2) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssdddd", $ad, $pozisyon, $maas, $avans, $ekstra_odeme1, $ekstra_odeme2);
-    $stmt->execute();
-    $stmt->close();
-
+    if ($stmt) {
+        $stmt->bind_param("ssdddd", $ad, $pozisyon, $maas, $avans, $ekstra_odeme1, $ekstra_odeme2);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Çalışan başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Çalışan eklenirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Çalışan ekleme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: calisanlar.php");
     exit();
 }
 
-// Çalışanı silme işlemi
+// Çalışan Silme İşlemi
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
-    $sil_id = $_POST['sil_id'];
+    $sil_id = intval($_POST['sil_id']); // Güvenlik için intval kullanımı
 
-    // Çalışanı sil
     $stmt = $conn->prepare("DELETE FROM calisanlar WHERE id = ?");
-    $stmt->bind_param("i", $sil_id);
-    $stmt->execute();
-    $stmt->close();
+    if ($stmt) {
+        $stmt->bind_param("i", $sil_id);
+        if ($stmt->execute()) {
+            // ID sıralama işlemi
+            $conn->query("SET @new_id = 0;");
+            $conn->query("UPDATE calisanlar SET id = (@new_id := @new_id + 1);");
+            $conn->query("ALTER TABLE calisanlar AUTO_INCREMENT = 1;");
 
-    // Kalan çalışanları yeniden sıralamak için
-    $conn->query("SET @new_id = 0;"); // Yeni ID değerini sıfırla
-    $conn->query("UPDATE calisanlar SET id = (@new_id := @new_id + 1);"); // ID'leri sırayla güncelle
-    $conn->query("ALTER TABLE calisanlar AUTO_INCREMENT = 1;"); // AUTO_INCREMENT değerini sıfırla
-
+            $_SESSION['notification'] = [
+                'type' => 'danger', 
+                'message' => 'Çalışan başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Çalışan silinirken bir hata oluştu!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Çalışan silme işlemi başlatılamadı!'
+        ];
+    }
     header("Location: calisanlar.php");
     exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,6 +92,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
         .content {
             margin-left: 250px;
             padding: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #fefefe;
+            border-left: 5px solid;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: Arial, sans-serif;
+            color: #333;
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.4s ease;
+        }
+        .notification.success {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notification.danger {
+            border-color: #f44336;
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .notification .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        .notification .close-btn:hover {
+            color: #000;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -89,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                             <label for="ekstraOdeme2" class="form-label">Ekstra Ödeme 2</label>
                             <input type="number" class="form-control" name="ekstra_odeme2" placeholder="Ekstra Ödeme 2">
                         </div>
-                        <button type="submit" class="btn btn-primary">Kaydet</button>
+                        <button type="submit" class="btn btn-primary">Çalışan Ekle</button>
                     </form>
                 </div>
             </div>
@@ -132,11 +223,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sil_id'])) {
                                             <a href='calisan_duzenle.php?id={$row['id']}' class='btn btn-sm btn-primary'>Düzenle</a>
                                             <form method='POST' style='display:inline;'>
                                                 <input type='hidden' name='sil_id' value='{$row['id']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger'  onclick='return confirm(\"Bu çalışanı silmek istediğinize emin misiniz?\");'>Sil</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"Bu çalışanı silmek istediğinize emin misiniz?\");'>Sil</button>
                                             </form>
                                         </td>
                                     </tr>";
-                                            }
+                                }
                             } else {
                                 echo "<tr><td colspan='8' class='text-center'>Kayıt bulunamadı.</td></tr>";
                             }

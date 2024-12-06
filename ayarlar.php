@@ -1,7 +1,87 @@
 <?php
-require_once 'header.php'; // Header ve kullanıcı doğrulama
-?>
+require_once 'header.php'; // Header ve veritabanı bağlantısı
 
+
+// Bildirim gösterimi (Bildirim varsa gösterilir ve ardından temizlenir)
+if (isset($_SESSION['notification'])) {
+    $type = htmlspecialchars($_SESSION['notification']['type']); // success, danger
+    $message = htmlspecialchars($_SESSION['notification']['message']);
+    echo "
+    <div class='notification $type'>
+        <button class='close-btn' onclick='this.parentElement.style.display=\"none\";'>&times;</button>
+        <p>$message</p>
+    </div>";
+    unset($_SESSION['notification']); // Bildirimi gösterdikten sonra temizle
+}
+
+// Admin Ekleme İşlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'], $_POST['sifre'])) {
+    $email = $_POST['email'];
+    $sifre = $_POST['sifre'];
+    $izin = 'admin';
+
+    // Şifreyi güvenli bir şekilde hashle
+    $hashedPassword = password_hash($sifre, PASSWORD_BCRYPT);
+
+    $stmt = $conn->prepare("INSERT INTO kullanicilar (email, sifre, izin) VALUES (?, ?, ?)");
+    if ($stmt) {
+        $stmt->bind_param("sss", $email, $hashedPassword, $izin);
+        if ($stmt->execute()) {
+            $_SESSION['notification'] = [
+                'type' => 'success',
+                'message' => 'Yeni admin başarıyla eklendi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Hata: Admin eklenemedi.'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Hata: İşlem gerçekleştirilemedi!'
+        ];
+    }
+    header("Location: ayarlar.php");
+    exit();
+}
+
+// Admin Silme İşlemi
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
+    $deleteId = $_POST['delete_id'];
+
+    $stmt = $conn->prepare("DELETE FROM kullanicilar WHERE id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $deleteId);
+        if ($stmt->execute()) {
+            // ID'leri yeniden sıralamak için sorgular
+            $conn->query("SET @new_id = 0;");
+            $conn->query("UPDATE kullanicilar SET id = (@new_id := @new_id + 1);");
+            $conn->query("ALTER TABLE kullanicilar AUTO_INCREMENT = 1;");
+
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Admin başarıyla silindi!'
+            ];
+        } else {
+            $_SESSION['notification'] = [
+                'type' => 'danger',
+                'message' => 'Hata: Admin silinemedi!'
+            ];
+        }
+        $stmt->close();
+    } else {
+        $_SESSION['notification'] = [
+            'type' => 'danger',
+            'message' => 'Hata: İşlem gerçekleştirilemedi!'
+        ];
+    }
+    header("Location: ayarlar.php");
+    exit();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,6 +93,55 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
         .content {
             margin-left: 250px;
             padding: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #fefefe;
+            border-left: 5px solid;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: Arial, sans-serif;
+            color: #333;
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.4s ease;
+        }
+        .notification.success {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .notification.danger {
+            border-color: #f44336;
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .notification .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+        .notification .close-btn:hover {
+            color: #000;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -43,9 +172,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
 
             <!-- Admin Listesi -->
             <div class="card">
-                <div class="card-header bg-dark text-white">
-                    Admin Listesi
-                </div>
+                <div class="card-header bg-dark text-white">Admin Listesi</div>
                 <div class="card-body">
                     <table class="table table-striped table-hover">
                         <thead>
@@ -58,7 +185,7 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
                         </thead>
                         <tbody>
                             <?php
-                            $query = "SELECT id, email, izin FROM kullanicilar WHERE izin = 'admin'";
+                            $query = "SELECT id, email, izin FROM kullanicilar WHERE izin = 'admin' ORDER BY id ASC";
                             $result = $conn->query($query);
 
                             if ($result->num_rows > 0) {
@@ -86,47 +213,5 @@ require_once 'header.php'; // Header ve kullanıcı doğrulama
             </div>
         </div>
     </div>
-
-    <?php
-    // Admin Ekleme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['email'], $_POST['sifre'])) {
-        $email = $_POST['email'];
-        $sifre = $_POST['sifre'];
-        $izin = 'admin';
-
-        // Şifreyi güvenli bir şekilde hashle
-        $hashedPassword = password_hash($sifre, PASSWORD_BCRYPT);
-
-        // Yeni admin ekleme
-        $stmt = $conn->prepare("INSERT INTO kullanicilar (email, sifre, izin) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $email, $hashedPassword, $izin);
-
-        if ($stmt->execute()) {
-            echo "<script>alert('Yeni admin başarıyla eklendi!'); window.location.href='ayarlar.php';</script>";
-        } else {
-            echo "<script>alert('Hata: Admin eklenemedi.');</script>";
-        }
-
-        $stmt->close();
-    }
-
-    // Admin Silme İşlemi
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
-        $deleteId = $_POST['delete_id'];
-
-        $stmt = $conn->prepare("DELETE FROM kullanicilar WHERE id = ?");
-        $stmt->bind_param("i", $deleteId);
-
-        if ($stmt->execute()) {
-            echo "<script>alert('Admin başarıyla silindi!'); window.location.href='ayarlar.php';</script>";
-        } else {
-            echo "<script>alert('Hata: Admin silinemedi.');</script>";
-        }
-
-        $stmt->close();
-    }
-    ?>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
